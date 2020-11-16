@@ -3,31 +3,37 @@ import numpy as np
 
 class App(gym.Env):
     def __init__(self):
-        self.position = 0
-        self.action_space = gym.spaces.box.Box(np.array([-1]), np.array([1]), (1,)) # Aktionen zwischen -1 (mit max. Geschwindigkeit nach links) und 1 (nach rechts) möglich
-        self.observation_space = gym.spaces.box.Box(np.array([-100]), np.array([100]),(1,)) # Observationspace beinhaltet die Position des Agenten in der Umgebung von -100 bis 100
+        self.position = np.array([0.,0.])
+        self.action_space = gym.spaces.box.Box(np.array([-1, -1]), np.array([1, 1]), (2,)) # Aktionen zwischen -1 (mit max. Geschwindigkeit nach links) und 1 (nach rechts) möglich
+        self.observation_space = gym.spaces.box.Box(np.array([-100, -100]), np.array([100, 100]),(2,)) # Observationspace beinhaltet die Position des Agenten in der Umgebung von -100 bis 100
         self.step_counter = 0
         self.cum_reward = 0
+        self.destination = np.array([100., 100.])
 
 
     def step(self, action):
+        pre_position = self.position
+        pre_distance = np.sqrt(np.sum((self.destination - self.position) ** 2)) # Euklidische Distanz
+
         self.step_counter += 1
-        speed = action[0]
-        self.position += speed
+        # speed = action[0]
+        self.position += action
         done = False
 
+        distance = np.sqrt(np.sum((self.destination - self.position) ** 2))
+        speed = pre_distance - distance
 
-        if speed > 0 : reward = 5 * speed
+        if speed > 0 : reward = (5 / np.sqrt(2)) * speed
         else : reward = 0
 
-        if self.position >= 100 :
+        if distance <= 1 :
             reward = 100
-            self.position = 100
+            self.position = np.array([100.,100.])
             done = True
             print('Das Ziel wurde erreicht nach {} Schritten '.format(self.step_counter))
-        elif self.position < -100 :
+        elif not -100 <= self.position[0] < 100 or not -100 <= self.position[1] < 100 : # Wenn Agent des Aktionsraum verlässt
             reward = -100
-            self.position = -100
+            self.position = pre_position
             done = True
         elif self.step_counter >= 200:
             done = True
@@ -41,10 +47,10 @@ class App(gym.Env):
 
 
     def reset(self):
-        self.position = 0
+        self.position = np.array([0.,0.])
         self.cum_reward = 0
         self.step_counter = 0
-        return [self.position]
+        return self.position
 
     def render(self, mode='human'):
         pass
