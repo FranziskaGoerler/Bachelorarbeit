@@ -2,7 +2,7 @@ import torch
 import gym
 import numpy as np
 from torch import nn
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 from ..memory import Memory
 from tqdm.auto import tqdm
 
@@ -21,7 +21,8 @@ class BaseAgent(nn.Module):
       self.load(save_path)
 
   def load(self,save_path):
-    self.writer=SummaryWriter(save_path, flush_secs=10)
+    # self.writer=SummaryWriter(save_path, flush_secs=10)
+    pass
 
   def write_scalar(self,tag,value,step=None):
     if self.writer is not None:
