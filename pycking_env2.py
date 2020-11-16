@@ -18,11 +18,14 @@ SCREEN_TITLE = "pycking environment"
 
 AGENT_MAX_SPEED = 3
 AGENT_MIN_SPEED = 1.5
-AGENT_MAX_ANGLE = 2*np.pi
-AGENT_MIN_ANGLE = 0
-REWARD_TARGET_FOUND = 100
-REWARD_DISTANCE_COVERED = 1
-AGENT_MAX_STEPS = 800
+AGENT_MAX_ANGLE = np.pi
+AGENT_MIN_ANGLE = -np.pi
+REWARD_TARGET_FOUND = 1000    # reward for reaching target
+REWARD_DISTANCE_COVERED = 1   # reward for moving straight towards target with maximal speed
+REWARD_COLLISION = -500
+REWARD_STATIONARY = -10
+DONE_AT_COLLISION = True
+AGENT_MAX_STEPS = 800    # max length of an episode
 TARGET_INDEX = 4      # Index of target for agent. None for random target each episode.
 CENTER_START = False   # Whether to always put agent in the screen center (True) or initialize randomly (False)
 
@@ -44,9 +47,6 @@ class Shape:
 class BufferedShape(Shape):
     def __init__(self, x, y, width, height, angle, color):
         super().__init__(x, y, width, height, angle, color)
-        # Somehow the coordinates for rectangle and ellipse are twice as large as usual
-        # not sure if bug or feature
-        # e.g. a rect at the window center of a 800x800 window needs to have coordinates (200, 200)
 
     def draw(self):
         self.shape_list.center_x = self.x
@@ -261,7 +261,7 @@ class Agent:
         self.target = first_target
         self._radius = 17.5
 
-    def step(self, angle, speed, robots):
+    def step(self, dx, dy, speed, robots):
 
         def near_robot(x, y, robots):
             d = SCREEN_HEIGHT
@@ -275,16 +275,22 @@ class Agent:
 
             return False
 
-        nx = self.x + np.cos(angle) * max(min(speed, AGENT_MAX_SPEED), AGENT_MIN_SPEED)
-        ny = self.y + np.sin(angle) * max(min(speed, AGENT_MAX_SPEED), AGENT_MIN_SPEED)
+        if abs(dx) + abs(dy) < 10e-4:
+            if REWARD_STATIONARY != 0:
+                return REWARD_STATIONARY
+            speed_fac = 0
+        else:
+            speed_fac = speed / np.sqrt(dx**2 + dy**2)
+        nx = self.x + dx * speed_fac
+        ny = self.y + dy * speed_fac
 
         target = self.target if self.has_package else self.target
         dist_to_target_before = np.sqrt((target.x - self.x)**2 + (target.y - self.y)**2)
 
         if near_robot(nx, ny, robots):
-            return -1
+            return REWARD_COLLISION
         if nx > SCREEN_WIDTH or nx < 0 or ny > SCREEN_HEIGHT or ny < 0:
-            return -1
+            return REWARD_COLLISION
         self.x = nx
         self.y = ny
 
@@ -299,7 +305,7 @@ class Agent:
             print("Target Found! Reward: {}".format(REWARD_TARGET_FOUND))
             return REWARD_TARGET_FOUND
 
-        distance_reward = max(0, (dist_to_target_before - dist_to_target_after) / (AGENT_MAX_SPEED/REWARD_DISTANCE_COVERED))   # reward of 1 if moving straight towards target with speed 3
+        distance_reward = max(0, (dist_to_target_before - dist_to_target_after) / (AGENT_MAX_SPEED/REWARD_DISTANCE_COVERED))   # reward of 1 if moving straight towards target with max speed
 
         return distance_reward
 
@@ -333,7 +339,7 @@ class Target:
 
 
 class Wind(arcade.Window):
-    def __init__(self, master):
+    def __init__(self, master, render=False):
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
         self.background_color = arcade.color.WHITE
 
@@ -360,7 +366,7 @@ class Wind(arcade.Window):
             if t.active:
                 self.end_targets[-1].change_color(arcade.color.RED_ORANGE)
 
-        self.rendering = False
+        self.rendering = render
         self.closed = False
 
         @self.event
@@ -444,16 +450,19 @@ class Wind(arcade.Window):
 class App(gym.Env):
     """ Main application class. """
 
-    def __init__(self):
+    def __init__(self, always_render=False):
         self.print = True
         self.robots = []
         self.agent = None
         self.step_return = 0
         self.agent_angle = 0
+        self.agent_dx = 0
+        self.agent_dy = 0
         self.agent_speed = 0
         self.start_targets = []
         self.end_targets = []
         self.cum_reward = 0
+        self.always_render = always_render
 
         self.processing_time = 0
         self.step_time = timeit.default_timer()
@@ -464,7 +473,7 @@ class App(gym.Env):
 
         space_len = (2 + N_BOTS)
         self.observation_space = gym.spaces.box.Box(np.array([0, 0]*space_len), np.array([SCREEN_WIDTH, SCREEN_HEIGHT]*space_len), (2*space_len,))
-        self.action_space = gym.spaces.box.Box(np.array([AGENT_MIN_ANGLE, AGENT_MIN_SPEED]), np.array([AGENT_MAX_ANGLE, AGENT_MAX_SPEED]), (2,))
+        self.action_space = gym.spaces.box.Box(np.array([-1, -1, AGENT_MIN_SPEED]), np.array([1, 1, AGENT_MAX_SPEED]), (3,))
 
         self.wind = None
 
@@ -545,8 +554,8 @@ class App(gym.Env):
         self.agent.target.active = True
         self.agent.has_package = package
 
-        # if self.wind is None:
-        #     self.wind = Wind(self)
+        if self.wind is None and self.always_render:
+            self.wind = Wind(self, self.always_render)
 
     def update(self):
         """ Move everything """
@@ -559,8 +568,10 @@ class App(gym.Env):
             if r.pick_target is None:
                 r.pick_target = self.start_targets[random.randint(0, N_BINS - 1)]
         self.step_time = timeit.default_timer()
-        self.step_return = self.agent.step(self.agent_angle, self.agent_speed, self.robots)
+        self.step_return = self.agent.step(self.agent_dx, self.agent_dy, self.agent_speed, self.robots)
         if self.step_return == REWARD_TARGET_FOUND:
+            self.done = True
+        if self.step_return == REWARD_COLLISION and DONE_AT_COLLISION:
             self.done = True
         if self.agent.target is None:
             if TARGET_INDEX is None:
@@ -574,8 +585,10 @@ class App(gym.Env):
     def step(self, action):
         self.step_count += 1
         # print(action)
-        self.agent_angle = action[0]
-        self.agent_speed = action[1]
+        # self.agent_angle = action[0]
+        self.agent_dx = action[0]
+        self.agent_dy = action[1]
+        self.agent_speed = action[2]
 
         self.update()
 
@@ -596,18 +609,18 @@ class App(gym.Env):
 
         # return observation, reward, done, info
         rob_pos = [[r.x, r.y] for r in self.robots]
-        return np.array([self.agent.x, self.agent.y] + [self.agent.target.x, self.agent.target.x] + [coord for coord_list in rob_pos for coord in coord_list]), self.step_return, self.done, dict()
+        return np.array([self.agent.x, self.agent.y] + [self.agent.target.x, self.agent.target.y] + [coord for coord_list in rob_pos for coord in coord_list]), self.step_return, self.done, dict()
 
     def reset(self):
-        if self.wind is not None:
+        if self.wind is not None and not self.always_render:
             self.wind.rendering = False
         self.setup()
         rob_pos = [[r.x, r.y] for r in self.robots]
-        return np.array([self.agent.x, self.agent.y] + [self.agent.target.x, self.agent.target.x] + [coord for coord_list in rob_pos for coord in coord_list])
+        return np.array([self.agent.x, self.agent.y] + [self.agent.target.x, self.agent.target.y] + [coord for coord_list in rob_pos for coord in coord_list])
 
     def render(self, mode='human'):
         if self.wind is None:
-            self.wind = Wind(self)
+            self.wind = Wind(self, True)
         if not self.wind.rendering:
             self.wind.rendering = True
         # if self.print:
