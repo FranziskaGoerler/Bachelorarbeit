@@ -5,13 +5,16 @@ from pyforce.agents import TD3Agent
 import torch
 
 import minimal
+# import minimal_v1
 # from pyforce import agents
 
 # device="cuda:0" if torch.cuda.is_available() else "cpu"
 # # torch.cuda.set_device(0)
 device= "cpu"
 # print(device)
+# env=wrap_openai_gym(minimal_v1.App())
 env=wrap_openai_gym(minimal.App())
+
 
 agent=TD3Agent(
     env,
