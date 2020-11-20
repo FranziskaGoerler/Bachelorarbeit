@@ -29,36 +29,36 @@ class App(gym.Env):
         best_angle_to_destination = np.arctan2(pre_vector_to_target[1], pre_vector_to_target[0]) # Wäre der bestmögliche Winkel gewesen
         angle_to_destination = np.arctan2(action[1], action[0])
         angle_error = best_angle_to_destination - angle_to_destination
-        speed = pre_distance - distance
+        delta_distance = pre_distance - distance
         reward_factor = (5 / (np.exp(np.pi / 2) - 1)) * action_length
-
-        # if speed > 0: reward = (5 / np.sqrt(2)) * speed
-        # else: reward = 0
         reward = 0
 
         if distance <= 1:
             reward = 1000
-            self.position = np.array([100.,100.])
+            # self.position = np.array([100.,100.])
             done = True
             print('Das Ziel wurde erreicht nach {} Schritten '.format(self.step_counter))
 
-        # Belohnung abhängig von Verhältnis zu eingeschlagenem Winkel zu perfektem Winkel
-        if not -100 <= self.position[0] < 100 or not -100 <= self.position[1] < 100: # Wenn Agent des Aktionsraum verlässt
+        elif not -100 <= self.position[0] <= 100 or not -100 <= self.position[1] <= 100:
            # reward = 0
             self.position = pre_position
             done = True
+
         elif self.step_counter >= 200:
             done = True
 
-        elif np.abs(angle_error) < (np.pi / 180):
-            reward = 5 * action_length
+        # (1) Belohnung der Distanzverringerung zum Ziel
+        elif delta_distance > 0: reward = (5 / np.sqrt(2)) * delta_distance
 
+        # (2) Belohnung abhängig von Verhältnis des gewählten Winkels zum perfekten Winkel
         # elif angle_error <= 0 and angle_error >= - np.pi / 2:
         #     reward = (np.exp(angle_error + np.pi / 2) - 1) * reward_factor
-        #
         # elif angle_error > 0 and angle_error <= np.pi / 2:
         #     reward = (np.exp(- angle_error + np.pi / 2) - 1) * reward_factor
 
+        # (3) Nur Belohnung, wenn die Bewegungsrichtung geradlinig zum Ziel ist, mit einer Toleranz von 45 Grad
+        # elif np.abs(angle_error) < (np.pi / 180):
+        #    reward = 5 * action_length
 
         self.cum_reward += reward
 
@@ -71,7 +71,6 @@ class App(gym.Env):
 
         return (self.position, reward, done, dict())
 
-
     def reset(self):
         self.position = np.array([np.random.rand() * 200 - 100, np.random.rand() * 200 - 100])
         self.start_position = np.array(self.position)
@@ -81,6 +80,4 @@ class App(gym.Env):
 
     def render(self, mode='human'):
         pass
-
-
 
