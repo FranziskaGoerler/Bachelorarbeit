@@ -33,7 +33,7 @@ class App(gym.Env):
 
         # Normierung auf Länge 1, damit der Agent nicht immer nur diagonal (45 Grad) läuft, um maximale Belohnung zu erhalten
         if action_length > 3:
-            action /= action_length
+            action = (action / action_length) * 3
             action_length = 3
 
         self.position += action
