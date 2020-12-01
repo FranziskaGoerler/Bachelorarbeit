@@ -1,0 +1,29 @@
+(1) RL_Agent
+- Erhöhung Batch Size auf 800 *
+
+(2) Observation Space
+- X und Y
+- Distanzvektor
+
+Vorher:
+self.observation_space = gym.spaces.box.Box(np.array([0, 0]*space_len), np.array([SCREEN_WIDTH, SCREEN_HEIGHT]*space_len), (2*space_len,))
+
+Nachher:
+self.observation_space = gym.spaces.box.Box(np.array([0, 0, -800, -800] * space_len), np.array([800, 800, 800, 800] * space_len), (4 * space_len,))
+
+
+(3) Action Space
+Vorher: 
+self.action_space = gym.spaces.box.Box(np.array([-1, -1, AGENT_MIN_SPEED]), np.array([1, 1, AGENT_MAX_SPEED]), (3,))
+
+Nachher:
+self.action_space = gym.spaces.box.Box(np.array([-3, -3]), np.array([3, 3]), (2,))
+
+(3) Belohnungsfunktion
+- Funktion
+- Reward für Ziel = 5000 * 
+
+(4)
+Stepfunktion
+- Upate in Stepfunktion
+

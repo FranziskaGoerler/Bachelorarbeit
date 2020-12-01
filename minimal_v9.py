@@ -32,9 +32,9 @@ class App(gym.Env):
         self.step_counter += 1
 
         # Normierung auf Länge 1, damit der Agent nicht immer nur diagonal (45 Grad) läuft, um maximale Belohnung zu erhalten
-        if action_length > 1:
-            action /= action_length
-            action_length = 1
+        if action_length > 3:
+            action = (action / action_length) * 3
+            action_length = 3
 
         self.position += action
         done = False
@@ -44,21 +44,20 @@ class App(gym.Env):
         angle_to_destination = np.arctan2(action[1], action[0])
         angle_error = best_angle_to_destination - angle_to_destination
         delta_distance = pre_distance - distance
-        reward_factor = (5 / (np.exp(np.pi / 2) - 1)) * action_length
+        reward_factor = (1 / (np.exp(np.pi / 2) - 1)) * action_length
         reward = 0
 
         if distance <= 1:
-            reward = 1000
-            # self.position = np.array([100.,100.])
+            reward = 5000
             done = True
             print('Das Ziel wurde erreicht nach {} Schritten '.format(self.step_counter))
 
-        elif not -100 <= self.position[0] <= 100 or not -100 <= self.position[1] <= 100:
+        elif not 0 <= self.position[0] <= 800 or not 0 <= self.position[1] <= 800:
             # reward = -5
             self.position = pre_position
             done = True
 
-        elif self.step_counter >= 200:
+        elif self.step_counter >= 500:
             done = True
 
         # (1) Belohnung der Distanzverringerung zum Ziel
@@ -92,8 +91,7 @@ class App(gym.Env):
 
     def reset(self):
         self.destination = np.array(self.start_targets[np.random.randint(8)])
-        self.position = np.array([np.random.rand() * 200 - 100, np.random.rand() * 200 - 100])
-        # self.position = np.array([0., 0.])
+        self.position = np.array([np.random.rand() * SCREEN_WIDTH, np.random.rand() * SCREEN_HEIGHT])
         self.start_position = np.array(self.position)
         self.cum_reward = 0
         self.step_counter = 0
