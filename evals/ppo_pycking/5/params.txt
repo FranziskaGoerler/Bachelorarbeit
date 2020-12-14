@@ -1,0 +1,35 @@
+agent_params
+	save_path = ./evals/ppo_pycking/5
+	value_lr = 0.0005
+	policy_lr = 0.0005
+	episodes = 20000
+	train_freq = 2048
+	eval_freq = 50
+	render = False
+	batch_size = 256
+	gamma = 0.99
+	tau = 0.95
+	clip = 0.2
+	n_steps = 32
+	entropy_coef = 0.01
+env_params
+	SCREEN_WIDTH = 800
+	SCREEN_HEIGHT = 800
+	N_BINS = 4
+	N_BOTS = 4
+	COLLISION_DISTANCE = 35
+	PLAN_STEPS = 20
+	CHECK_MAX_STEPS = 5
+	RADIUS = 100
+	MIN_DIST = 20
+	SCREEN_TITLE = pycking environment
+	ROBOT_MAX_SPEED = 0
+	AGENT_MAX_SPEED = 8
+	PUNISH_WRONG_DIRECTION = True
+	REWARD_TARGET_FOUND = 5000
+	REWARD_COLLISION = -5000
+	REWARD_BOUNDARY = 0
+	DONE_AT_COLLISION = True
+	AGENT_MAX_STEPS = 350
+	TARGET_INDEX = None
+	CENTER_START = False

@@ -15,7 +15,7 @@ env=wrap_openai_gym(pycking_env3.App(always_render=True))
 
 agent=TD3Agent(
     env,
-    save_path="./evals/td3_example",
+    save_path="./evals/traj_test2",
     critic_lr=1e-3,
     actor_lr=1e-3
 ).to(device)

@@ -119,4 +119,14 @@ class TD3Agent(BaseAgent):
                               self.eval_memory.reward.detach().mean().cpu(),step=self.eval_env_episodes)
             self.write_scalar("eval/reward_sum",
                               self.eval_memory.reward.detach().sum().cpu(),step=self.eval_env_episodes)
+            # write trajectories to tensorboard file. 20 trajectories are shown together in one window
+            # at some point, there are too many windows or too much data to be shown, and trajectories do not appear anymore.
+            # maybe it was a bad idea - commented it out.
+            # ep_pack = int((self.eval_env_episodes // 20) * 20)
+            # for stat in self.eval_memory.data['next_state']['state'].detach():
+            #     x = stat[0]
+            #     y = stat[1]
+            #     self.write_scalars('traj/eval{:05d}-{:05d}'.format(ep_pack, ep_pack+24), {'ep{:05d}'.format(int(self.eval_env_episodes)): y}, step=x)
+                # problem here might be that x is coded as step, which is cast to int in torch/utils/tensorboard/writer.py in FileWriter.add_event(), line 85
+                # thus we are losing a bit precision here. But for visualization purposes this seems ok
             self.eval_memory.clear()
