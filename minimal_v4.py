@@ -4,9 +4,11 @@ import numpy as np
 class App(gym.Env):
     def __init__(self):
         self.position = np.array([np.random.rand() * 200 - 100, np.random.rand() * 200 - 100]) # Zufällige x- und y-Werte
+        # self.position = np.array([np.random.rand() * 200, np.random.rand() * 200])
         self.start_position = np.array(self.position)
         self.action_space = gym.spaces.box.Box(np.array([-1, -1]), np.array([1, 1]), (2,))
-        self.observation_space = gym.spaces.box.Box(np.array([-100, -100]), np.array([100, 100]),(2,))
+        # self.observation_space = gym.spaces.box.Box(np.array([0, 0]), np.array([200, 200]),(2,))
+        self.observation_space = gym.spaces.box.Box(np.array([-100, -100]), np.array([100, 100]), (2,))
         self.step_counter = 0
         self.cum_reward = 0
         self.destination = np.array([0., 0.])
@@ -18,7 +20,7 @@ class App(gym.Env):
         action_length = np.sqrt(np.sum(action ** 2))
         self.step_counter += 1
 
-        # Normierung auf Länge 1, damit der Agent nicht immer nur diagonal (45 Grad) läuft, um maximale Belohnung zu erhalten
+      #  Normierung auf Länge 1, damit der Agent nicht immer nur diagonal (45 Grad) läuft, um maximale Belohnung zu erhalten
         if action_length > 1:
             action /= action_length
             action_length = 1
@@ -48,14 +50,14 @@ class App(gym.Env):
             done = True
 
         # (1) Belohnung der Distanzverringerung zum Ziel
-        # elif delta_distance > 0: reward = (5 / np.sqrt(2)) * delta_distance
+        elif delta_distance > 0: reward = (5 / np.sqrt(2)) * delta_distance
         # else: reward = 0
 
         # (2) Belohnung abhängig von Verhältnis des gewählten Winkels zum perfekten Winkel
-        elif angle_error <= 0 and angle_error >= - np.pi / 2:
-            reward = (np.exp(angle_error + np.pi / 2) - 1) * reward_factor
-        elif angle_error > 0 and angle_error <= np.pi / 2:
-            reward = (np.exp(- angle_error + np.pi / 2) - 1) * reward_factor
+        # elif angle_error <= 0 and angle_error >= - np.pi / 2:
+        #     reward = (np.exp(angle_error + np.pi / 2) - 1) * reward_factor
+        # elif angle_error > 0 and angle_error <= np.pi / 2:
+        #     reward = (np.exp(- angle_error + np.pi / 2) - 1) * reward_factor
 
         # (3) Nur Belohnung, wenn die Bewegungsrichtung geradlinig zum Ziel ist, mit einer Toleranz von 45 Grad
         # elif np.abs(angle_error) < (np.pi / 180):
