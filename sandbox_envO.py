@@ -9,8 +9,9 @@ import time
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 800
 N_BINS = 4
-N_BOTS = 4
+N_BOTS = 1
 COLLISION_DISTANCE = 35
+COLLISION_DISTANCE = 150+17.5
 PLAN_STEPS = 20         # default 45
 CHECK_MAX_STEPS = 5    # default 15
 RADIUS = 100
@@ -19,19 +20,19 @@ SCREEN_TITLE = "pycking environment"
 
 ROBOT_MAX_SPEED = 0    # if exactly 0, step function of robot is never called, which speeds up environment
 AGENT_MAX_SPEED = 8
-PUNISH_WRONG_DIRECTION = True
+PUNISH_WRONG_DIRECTION = False
 REWARD_TARGET_FOUND = 5000    # reward for reaching target
 REWARD_COLLISION = -5000
 REWARD_BOUNDARY = -5000
 DONE_AT_COLLISION = True
-ONLY_NEAREST_ROBOT = False
+ONLY_NEAREST_ROBOT = True
 IGNORE_ROBOTS = False
 AGENT_MAX_STEPS = 350    # max length of an episode
 TARGET_INDEX = None      # Index of target for agent. None for random target each episode.
 CENTER_START = False   # Whether to always put agent in the screen center (True) or initialize randomly (False)
 
 # DESCRIPTION = ''
-DESCRIPTION = 'Training is based on an agent that has learned to ignore robots and reach the targets (10/agent)'
+DESCRIPTION = 'This has one big robot (radius 150 instead of 35) in the middle, as a static obstacle. The robot position is not part of the observation. Training is based on ppo_sandbox/2/agent.'
 
 param_names = ['SCREEN_WIDTH', 'SCREEN_HEIGHT', 'N_BINS', 'N_BOTS', 'COLLISION_DISTANCE', 'PLAN_STEPS', 'CHECK_MAX_STEPS', 'RADIUS', 'MIN_DIST', 'SCREEN_TITLE', 'ROBOT_MAX_SPEED',
 'AGENT_MAX_SPEED', 'PUNISH_WRONG_DIRECTION', 'REWARD_TARGET_FOUND', 'REWARD_COLLISION', 'REWARD_BOUNDARY', 'DONE_AT_COLLISION', 'ONLY_NEAREST_ROBOT',
@@ -79,6 +80,7 @@ class Line(Shape):
 class RobotShape(BufferedShape):
     def __init__(self, xpos, ypos):
         self._radius = 17.5
+        self._radius = 150
         super().__init__(xpos, ypos, self._radius, self._radius, 0, arcade.color.GREEN)
         shape = arcade.create_ellipse_filled(0, 0,
                                              self.width, self.height,
@@ -506,6 +508,7 @@ class App(gym.Env):
         self.rng = np.random.default_rng()
 
         space_len = (2 + N_BOTS) if not ONLY_NEAREST_ROBOT else 3
+        space_len = 2
         self.observation_space = gym.spaces.box.Box(np.array([0, 0] + [-800, -800] * (space_len-1)), np.array([800, 800] * space_len), (2 * space_len,))
         self.action_space = gym.spaces.box.Box(np.array([-AGENT_MAX_SPEED, -AGENT_MAX_SPEED]), np.array([AGENT_MAX_SPEED, AGENT_MAX_SPEED]), (2,))
 
@@ -560,10 +563,12 @@ class App(gym.Env):
                 nx = rx * (SCREEN_WIDTH - 150) + 75
                 ny = ry * (SCREEN_HEIGHT - 150) + 75
 
+            nx, ny = SCREEN_WIDTH/2, SCREEN_HEIGHT/2
+
             # ti_start = self.rng.integers(0, N_BINS-1)
             # ti_end = self.rng.integers(0, N_BINS - 1)
-            ti_start = robot_rng.integers(0, N_BINS)
-            ti_end = robot_rng.integers(0, N_BINS )
+            ti_start = robot_rng.integers(0, N_BINS-1)
+            ti_end = robot_rng.integers(0, N_BINS - 1)
 
             self.robots.append(Robot(nx, ny, self.start_targets[ti_start], self.end_targets[ti_end]))
 
@@ -586,7 +591,7 @@ class App(gym.Env):
                 ny = ry * (SCREEN_HEIGHT - 150) + 75
 
         if TARGET_INDEX is None:
-            ti_start = self.rng.integers(0, N_BINS )
+            ti_start = self.rng.integers(0, N_BINS - 1)
             package = self.rng.random() < 0.5
         else:
             ti_start = TARGET_INDEX % N_BINS
@@ -616,9 +621,9 @@ class App(gym.Env):
             for r in self.robots:
                 r.step(dt, self.robots)
                 if r.drop_target is None:
-                    r.drop_target = self.end_targets[self.rng.integers(0, N_BINS )]
+                    r.drop_target = self.end_targets[self.rng.integers(0, N_BINS - 1)]
                 if r.pick_target is None:
-                    r.pick_target = self.start_targets[self.rng.integers(0, N_BINS )]
+                    r.pick_target = self.start_targets[self.rng.integers(0, N_BINS - 1)]
         self.step_time = timeit.default_timer()
         signal, reward = self.agent.step(action, self.robots)
         if signal == Agent.TARGET_FOUND:
@@ -631,7 +636,7 @@ class App(gym.Env):
             self.done = True
         if self.agent.target is None:
             if TARGET_INDEX is None:
-                ti = self.rng.integers(0, N_BINS )
+                ti = self.rng.integers(0, N_BINS - 1)
             else:
                 ti = TARGET_INDEX % N_BINS
             self.agent.target = self.end_targets[ti] if self.agent.has_package else self.start_targets[ti]
@@ -660,6 +665,7 @@ class App(gym.Env):
         if ONLY_NEAREST_ROBOT:
             rob_distance = [np.sqrt(r[0]**2 + r[1] ** 2) for r in rob_pos]
             rob_pos = [rob_pos[np.argmin(rob_distance)]]
+        rob_pos = []
         return np.array([self.agent.x, self.agent.y] + [self.agent.target.x - self.agent.x, self.agent.target.y - self.agent.y] + [coord for coord_list in rob_pos for coord in coord_list]), reward, self.done, dict()
 
     def reset(self):
@@ -670,6 +676,7 @@ class App(gym.Env):
         if ONLY_NEAREST_ROBOT:
             rob_distance = [np.sqrt(r[0]**2 + r[1] ** 2) for r in rob_pos]
             rob_pos = [rob_pos[np.argmin(rob_distance)]]
+        rob_pos = []
         return np.array([self.agent.x, self.agent.y] + [self.agent.target.x - self.agent.x, self.agent.target.y - self.agent.y] + [coord for coord_list in rob_pos for coord in coord_list])
 
     def render(self, mode='human'):

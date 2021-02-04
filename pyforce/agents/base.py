@@ -59,7 +59,7 @@ class BaseAgent(nn.Module):
                 state_dict = pickle.load(f)
             self.load_state_dict(state_dict)
 
-    def train(self, env, episodes=1000, eval_freq=None, eval_env=None, **kwargs):
+    def train(self, env, episodes=1000, eval_freq=None, eval_env=None, store_agent_every=100000, **kwargs):
         self.write_tensorboard_files = True
         store_additional = False
         for episode in tqdm(range(episodes)):
@@ -72,7 +72,7 @@ class BaseAgent(nn.Module):
                 state = next_state
                 done = done.max() == 1
                 self.env_steps += 1
-                if self.env_steps % 100000 == 0:
+                if self.env_steps % store_agent_every == 0:
                     store_additional = True
                 self.after_step(done, False, kwargs)
 

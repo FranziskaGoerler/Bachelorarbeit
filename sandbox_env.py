@@ -5,12 +5,16 @@ import timeit
 import math
 import numpy as np
 import time
+import bisect
+from pathlib import Path
 
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 800
 N_BINS = 4
-N_BOTS = 4
-COLLISION_DISTANCE = 35
+N_BOTS = 6
+BOT_RADIUS = 17.5
+COLLISION_DISTANCE = BOT_RADIUS + 17.5
+UNSAFE_DISTANCE = 5*BOT_RADIUS + 17.5
 PLAN_STEPS = 20         # default 45
 CHECK_MAX_STEPS = 5    # default 15
 RADIUS = 100
@@ -18,23 +22,31 @@ MIN_DIST = 20
 SCREEN_TITLE = "pycking environment"
 
 ROBOT_MAX_SPEED = 0    # if exactly 0, step function of robot is never called, which speeds up environment
-AGENT_MAX_SPEED = 8
+AGENT_MAX_SPEED = 6
 PUNISH_WRONG_DIRECTION = True
-REWARD_TARGET_FOUND = 5000    # reward for reaching target
-REWARD_COLLISION = -5000
-REWARD_BOUNDARY = -5000
+REWARD_TARGET_FOUND = 50   # reward for reaching target
+REWARD_COLLISION = -50
+REWARD_BOUNDARY = -50
+REWARD_SAFE_TO_UNSAFE = -AGENT_MAX_SPEED/2
+REWARD_UNSAFE_TO_SAFE = AGENT_MAX_SPEED/2
+REWARD_UNSAFE_TOWARDS_FACTOR = -1.5
+REWARD_UNSAFE_AWAY_FACTOR = 1.5
 DONE_AT_COLLISION = True
-ONLY_NEAREST_ROBOT = False
+ONLY_NEAREST_ROBOT = True
 IGNORE_ROBOTS = False
 AGENT_MAX_STEPS = 350    # max length of an episode
 TARGET_INDEX = None      # Index of target for agent. None for random target each episode.
 CENTER_START = False   # Whether to always put agent in the screen center (True) or initialize randomly (False)
 
 # DESCRIPTION = ''
-DESCRIPTION = 'Training is based on an agent that has learned to ignore robots and reach the targets (10/agent)'
+DESCRIPTION = 'observation: target vector, 12 sensors. safe/unsafe states (including walls)' \
+              'Training based on ppo_sandbox/18/agent. Learnrate decreased by 10.'
 
-param_names = ['SCREEN_WIDTH', 'SCREEN_HEIGHT', 'N_BINS', 'N_BOTS', 'COLLISION_DISTANCE', 'PLAN_STEPS', 'CHECK_MAX_STEPS', 'RADIUS', 'MIN_DIST', 'SCREEN_TITLE', 'ROBOT_MAX_SPEED',
-'AGENT_MAX_SPEED', 'PUNISH_WRONG_DIRECTION', 'REWARD_TARGET_FOUND', 'REWARD_COLLISION', 'REWARD_BOUNDARY', 'DONE_AT_COLLISION', 'ONLY_NEAREST_ROBOT',
+param_names = ['SCREEN_WIDTH', 'SCREEN_HEIGHT', 'N_BINS', 'N_BOTS', 'BOT_RADIUS', 'COLLISION_DISTANCE', 'UNSAFE_DISTANCE',
+               'PLAN_STEPS', 'CHECK_MAX_STEPS', 'RADIUS', 'MIN_DIST', 'SCREEN_TITLE', 'ROBOT_MAX_SPEED',
+               'AGENT_MAX_SPEED', 'PUNISH_WRONG_DIRECTION', 'REWARD_TARGET_FOUND', 'REWARD_COLLISION', 'REWARD_BOUNDARY',
+               'REWARD_SAFE_TO_UNSAFE', 'REWARD_UNSAFE_TO_SAFE', 'REWARD_UNSAFE_TOWARDS_FACTOR', 'REWARD_UNSAFE_AWAY_FACTOR',
+               'DONE_AT_COLLISION', 'ONLY_NEAREST_ROBOT',
                'IGNORE_ROBOTS', 'AGENT_MAX_STEPS', 'TARGET_INDEX', 'CENTER_START', 'DESCRIPTION']
 
 env_params = {p: eval(p) for p in param_names}
@@ -78,7 +90,7 @@ class Line(Shape):
 
 class RobotShape(BufferedShape):
     def __init__(self, xpos, ypos):
-        self._radius = 17.5
+        self._radius = BOT_RADIUS
         super().__init__(xpos, ypos, self._radius, self._radius, 0, arcade.color.GREEN)
         shape = arcade.create_ellipse_filled(0, 0,
                                              self.width, self.height,
@@ -94,6 +106,15 @@ class RobotShape(BufferedShape):
         self.planned_path.draw()
 
 
+def points_on_circumference(center=(0, 0), r=50, n=100):
+    return [
+        (
+            center[0] + (np.cos(2 * np.pi / n * x) * r),  # x
+            center[1] + (np.sin(2 * np.pi / n * x) * r)  # y
+
+        ) for x in range(n)]
+
+
 class Robot:
     def __init__(self, xpos, ypos, start_target, end_target):
         self.x = xpos
@@ -104,11 +125,19 @@ class Robot:
         self.has_package = False
         self.pick_target = start_target
         self.drop_target = end_target
+        # self.trajectory = points_on_circumference((400,400), 100, 100)
+        # self.traj_index = 0
 
         point_list = ((self.x, self.y), (self.x + 10, self.y + 10), (self.x + 14, self.y + 18))
+        # point_list = points_on_circumference((self.x, self.y), UNSAFE_DISTANCE, 100)
+        # point_list = self.trajectory
         self.planned_path = Line(point_list)
 
     def step(self, dt, robots):
+        # new_pos = self.trajectory[self.traj_index]
+        # self.traj_index = (self.traj_index + 1) % len(self.trajectory)
+        # self.x, self.y = new_pos[0], new_pos[1]
+        # return
         if self.delta_average == 0:
             self.delta_average = dt
         else:
@@ -259,8 +288,10 @@ class AgentShape(BufferedShape):
         shape = arcade.create_ellipse_filled(0, 0,
                                              self.width, self.height,
                                              self.color, self.angle)
+        lin = arcade.create_line(0, 0, 0+self._radius, 0, arcade.color.WHITE, 5)
         self.shape_list = arcade.ShapeElementList()
         self.shape_list.append(shape)
+        self.shape_list.append(lin)
 
 
 class Agent:
@@ -269,26 +300,66 @@ class Agent:
     BOUNDARY_COLLISION = 2
     ROBOT_COLLISION = 3
 
-    def __init__(self, xpos, ypos, first_target):
+    def __init__(self, xpos, ypos, first_target, robots):
         self.x = xpos
         self.y = ypos
+        self.angle_pi6 = 0   # angle in multiples of pi/6, to avoid accumulating round-off error
+        self.angle = 0
+        self.angle_error = 0
         self.has_package = False
         self.target = first_target
+        diffy, diffx = self.target.y - self.y, self.target.x - self.x
+        self.angle_to_destination = np.arctan2(diffy, diffx)
+        self.angle_error = self.angle_to_destination - self.angle
+        self.dist_to_target = np.sqrt(diffy**2 + diffx**2)
         self._radius = 17.5
+        pi6 = np.pi/6
+        self.sensor_boundaries = [-2*pi6, -pi6, 0, pi6, 2*pi6, 3*pi6]
+        self.sensor_boundaries_all = [-5*pi6, -4*pi6, -3*pi6, -2*pi6, -pi6, 0, pi6, 2*pi6, 3*pi6, 4*pi6, 5*pi6, np.pi]
+        self.sensor_values = [0]*12
+        self.dist_to_rob = SCREEN_WIDTH+SCREEN_HEIGHT
+        self.dist_to_wall = min((self.x, SCREEN_WIDTH-self.x, self.y, SCREEN_HEIGHT-self.y))
+        self.update_sensors(robots)
 
     def step(self, action, robots):
 
-        def near_robot(x, y, robots):
-            d = SCREEN_HEIGHT
+        def distance_to_closest_robot(x, y, robots):
+            d = SCREEN_HEIGHT+SCREEN_WIDTH
+            d_min = SCREEN_HEIGHT+SCREEN_WIDTH
             for rob in robots:
                 dx = rob.x - x
                 dy = rob.y - y
                 d = np.sqrt(dx**2 + dy**2)
 
                 if d <= COLLISION_DISTANCE:
-                    return True
+                    return 0
 
-            return False
+                if d < d_min:
+                    d_min = d
+
+            return d_min
+
+        # discrete action
+        # dx = 0
+        # dy = 0
+        # action_length = AGENT_MAX_SPEED / 2
+        # if action == 0:
+        #     # forward with half speed
+        #     dx = action_length * np.cos(self.angle)
+        #     dy = action_length * np.sin(self.angle)
+        # elif action == 1:
+        #     # turn right: angle minus pi/6
+        #     self.angle_pi6 -= 1
+        #     if self.angle_pi6 < -6:
+        #         self.angle_pi6 += 12
+        # elif action == 2:
+        #     # turn left: angle plus pi/6
+        #     self.angle_pi6 += 1
+        #     if self.angle_pi6 > 6:
+        #         self.angle_pi6 -= 12
+        # self.angle = (self.angle_pi6 / 6) * np.pi
+        # nx = self.x + dx
+        # ny = self.y + dy
 
         action_length = np.sqrt(np.sum(action ** 2))
         if action_length > AGENT_MAX_SPEED:
@@ -300,14 +371,18 @@ class Agent:
 
         pre_diffx, pre_diffy = self.target.x - self.x, self.target.y - self.y
 
-        if not IGNORE_ROBOTS and near_robot(nx, ny, robots):
-            return Agent.ROBOT_COLLISION, REWARD_COLLISION
-        if nx > SCREEN_WIDTH or nx < 0 or ny > SCREEN_HEIGHT or ny < 0:
+        if not IGNORE_ROBOTS:
+            new_dist_to_rob = distance_to_closest_robot(nx, ny, robots)
+            if new_dist_to_rob == 0:
+                return Agent.ROBOT_COLLISION, REWARD_COLLISION
+        new_dist_to_wall = min((nx, SCREEN_WIDTH-nx, ny, SCREEN_HEIGHT-ny))
+        if new_dist_to_wall < 0:
             return Agent.BOUNDARY_COLLISION, REWARD_BOUNDARY
         self.x = nx
         self.y = ny
 
         diffx, diffy = self.target.x - self.x, self.target.y - self.y
+        self.dist_to_target = np.sqrt(diffy**2 + diffx**2)
 
         if abs(diffx) <= MIN_DIST and abs(diffy) <= MIN_DIST:
             # target reached
@@ -316,20 +391,139 @@ class Agent:
             self.target = None
             return Agent.TARGET_FOUND, REWARD_TARGET_FOUND
 
-        angle_to_destination = np.arctan2(pre_diffy, pre_diffx) # Wäre der bestmögliche Winkel gewesen
-        action_angle = np.arctan2(action[1], action[0])
-        angle_error = angle_to_destination - action_angle
-        reward_factor = (1 / (np.exp(np.pi / 2) - 1)) * action_length
+        self.update_sensors(robots)
+
         reward = 0
-        # (2) Belohnung abhängig vom Verhältnis des gewählten Winkels zum perfekten Winkel
-        if angle_error <= 0 and angle_error >= - np.pi / 2:
-            reward = (np.exp(angle_error + np.pi / 2) - 1) * reward_factor
-        elif angle_error > 0 and angle_error <= np.pi / 2:
-            reward = (np.exp(- angle_error + np.pi / 2) - 1) * reward_factor
-        elif PUNISH_WRONG_DIRECTION:
-            reward = - action_length * ((2 / np.pi) * abs(angle_error) - 1)
+        if not IGNORE_ROBOTS:
+            dist_toward_robot = self.dist_to_rob - new_dist_to_rob
+            if dist_toward_robot > 0:
+                # we got nearer to robot
+                if new_dist_to_rob < UNSAFE_DISTANCE:
+                    # we are in an unsafe state
+                    if self.dist_to_rob < UNSAFE_DISTANCE:
+                        # moved from unsafe to unsafe, and closer to robot
+                        reward = REWARD_UNSAFE_TOWARDS_FACTOR * abs(dist_toward_robot)
+                    else:
+                        # moved from safe into unsafe
+                        reward = REWARD_SAFE_TO_UNSAFE
+            elif new_dist_to_rob > self.dist_to_rob:
+                # we got farther away from robot
+                if self.dist_to_rob < UNSAFE_DISTANCE:
+                    # we have previously been in an unsafe state
+                    if new_dist_to_rob < UNSAFE_DISTANCE:
+                        # moved from unsafe to unsafe, but away from robot
+                        reward = REWARD_UNSAFE_AWAY_FACTOR * abs(dist_toward_robot)
+                    else:
+                        # moved from unsafe into safe
+                        reward = REWARD_UNSAFE_TO_SAFE
+            self.dist_to_rob = new_dist_to_rob
+        if reward != 0:
+            self.dist_to_wall = new_dist_to_wall
+            return Agent.OK, reward
+
+        dist_toward_wall = self.dist_to_wall - new_dist_to_wall
+        if dist_toward_wall > 0:
+            if new_dist_to_wall < 50:
+                if self.dist_to_wall < 50:
+                    reward = REWARD_UNSAFE_TOWARDS_FACTOR * abs(dist_toward_wall)
+                else:
+                    reward = REWARD_SAFE_TO_UNSAFE
+        elif new_dist_to_wall > self.dist_to_wall:
+            if self.dist_to_wall < 50:
+                if new_dist_to_wall < 50:
+                    reward = REWARD_UNSAFE_AWAY_FACTOR * abs(dist_toward_wall)
+                else:
+                    reward = REWARD_UNSAFE_TO_SAFE
+        self.dist_to_wall = new_dist_to_wall
+        # if action == 0:
+        #     self.angle_to_destination = np.arctan2(pre_diffy, pre_diffx) # Wäre der bestmögliche Winkel gewesen
+        #     # action_angle = np.arctan2(action[1], action[0])
+        #     action_angle = self.angle
+        #     self.angle_error = self.angle_to_destination - action_angle
+        #     reward_factor = (1 / (np.exp(np.pi / 2) - 1)) * action_length
+        #     # reward = 0
+        #     # (2) Belohnung abhängig vom Verhältnis des gewählten Winkels zum perfekten Winkel
+        #     if self.angle_error <= 0 and self.angle_error >= - np.pi / 2:
+        #         reward = (np.exp(self.angle_error + np.pi / 2) - 1) * reward_factor
+        #     elif self.angle_error > 0 and self.angle_error <= np.pi / 2:
+        #         reward = (np.exp(- self.angle_error + np.pi / 2) - 1) * reward_factor
+        #     elif PUNISH_WRONG_DIRECTION:
+        #         reward = - action_length * ((2 / np.pi) * abs(self.angle_error) - 1)
+        # elif action == 1 or action == 2:
+        #     angle_error_before = self.angle_error
+        #     self.angle_error = self.angle_to_destination - self.angle
+        #     error_reduction = abs(angle_error_before) - abs(self.angle_error)
+        #     scaling = abs(error_reduction) / (np.pi / 6)  # full reward if reduction/increase is max value pi/6
+        #     if error_reduction > 0:
+        #         # angle error was reduced -> positive reward
+        #         reward = action_length * 0.6 * scaling
+        #     else:
+        #         # angle error was increased -> negative reward
+        #         reward = -action_length * scaling
+
+        dist_to_target_before = np.sqrt(pre_diffy**2 + pre_diffx**2)
+        dist_improvement = dist_to_target_before - self.dist_to_target
+        if dist_improvement > 0 or PUNISH_WRONG_DIRECTION:
+            reward = dist_improvement
 
         return Agent.OK, reward
+
+    def update_sensors(self, robots):
+        agent_angle = self.angle
+        # if agent_angle > np.pi:
+        #     agent_angle -= 2*np.pi   # angle should be in {-pi/2, pi/2}
+        pi6 = np.pi/6
+        angle_by_pi6 = agent_angle / pi6
+        rotation_steps = int(np.ceil(angle_by_pi6))   # by how many steps entries in sensor list need to be shifted
+        angle_delta = (angle_by_pi6 - rotation_steps) * pi6   # to subtract from sensor boundaries for calculation
+        boundary_values = [0] * 12
+        for ai, ang in enumerate(self.sensor_boundaries):
+            sensor_angle = angle_delta + ang
+            sin = np.sin(sensor_angle)
+            cos = np.cos(sensor_angle)
+            if abs(cos) > 1e-5:
+                m = sin / cos  # y = mx + b  <->   b = y - mx
+                b = self.y - m * self.x  # <-> x = (y-b)/m
+                x1 = SCREEN_WIDTH
+                y1 = m * x1 + b
+                if y1 > SCREEN_HEIGHT:
+                    y1 = SCREEN_HEIGHT
+                    x1 = (y1 - b) / m
+                value_right = np.sqrt((x1 - self.x) ** 2 + (y1 - self.y) ** 2)
+                x0 = 0
+                y0 = m * x0 + b
+                if y0 < 0:
+                    y0 = 0
+                    x0 = (y0 - b) / m
+                value_left = np.sqrt((x0 - self.x) ** 2 + (y0 - self.y) ** 2)
+            else:
+                # denominator almost 0 (vertical line) -> do sth else
+                # x constant at self.x
+                # y every value, including 0 and SCREEN_HEIGHT
+                if ai > 0:
+                    value_right = SCREEN_HEIGHT - self.y
+                    value_left = self.y
+                else:
+                    value_left = SCREEN_HEIGHT - self.y
+                    value_right = self.y
+            boundary_values[(ai-rotation_steps) % 12] = value_right
+            boundary_values[(ai+6-rotation_steps) % 12] = value_left
+            boundary_values.append(boundary_values[0])  # tiny wrap-around
+        for si in range(len(self.sensor_values)):
+            self.sensor_values[si] = np.min(boundary_values[si:si + 2]) - 17.5
+
+        for r in robots:
+            diffx, diffy = r.x - self.x, r.y - self.y
+            angle_to_robot = np.arctan2(diffy, diffx)
+            angle_r = angle_to_robot - angle_delta
+            if angle_r > np.pi:
+                angle_r -= 2*np.pi
+            # distance is from center to center, but sensor would measure from edge to edge, so radii are subtracted
+            distance_to_robot = np.sqrt(diffx**2 + diffy**2) - BOT_RADIUS - 17.5
+            # sensor boundaries begin with -5*pi6. If bisect returns 0 that means angle < -5*pi6,
+            # which is sensor number 8. So we add 8 to the index, and take modulo 12 to wrap indices around.
+            sensor_index = (bisect.bisect(self.sensor_boundaries_all, angle_r) + 8) % 12
+            self.sensor_values[sensor_index] = distance_to_robot
 
 
 class TargetShape(BufferedShape):
@@ -409,6 +603,8 @@ class Wind(arcade.Window):
 
         self.agent.x = self.master.agent.x
         self.agent.y = self.master.agent.y
+        # angle is in rad, but arcade used deg angle. This has to be converted here
+        self.agent.angle = self.master.agent.angle*(180 / np.pi)
         for r, rS in zip(self.master.robots, self.robots):
             rS.x = r.x
             rS.y = r.y
@@ -481,7 +677,7 @@ class Wind(arcade.Window):
 class App(gym.Env):
     """ Main application class. """
 
-    def __init__(self, always_render=False, verbose=False):
+    def __init__(self, always_render=False, verbose=False, traj_savepath=None):
         self.print = True
         self.robots = []
         self.agent = None
@@ -495,6 +691,7 @@ class App(gym.Env):
         self.cum_reward = 0
         self.always_render = always_render
         self.verbose = verbose
+        self.traj_savepath = traj_savepath
 
         self.processing_time = 0
         self.step_time = timeit.default_timer()
@@ -505,11 +702,67 @@ class App(gym.Env):
 
         self.rng = np.random.default_rng()
 
+        maxdist = np.sqrt(SCREEN_WIDTH**2 + SCREEN_HEIGHT**2)
         space_len = (2 + N_BOTS) if not ONLY_NEAREST_ROBOT else 3
-        self.observation_space = gym.spaces.box.Box(np.array([0, 0] + [-800, -800] * (space_len-1)), np.array([800, 800] * space_len), (2 * space_len,))
+        # self.observation_space = gym.spaces.box.Box(np.array([0, 0] + [-800, -800] * (space_len-1)), np.array([800, 800] * space_len), (2 * space_len,))
+        # space_len = 2
+        # self.observation_space = gym.spaces.box.Box(  # x-y-agent, x-y-vector-to-target, 12-distance-sensor-values
+        #     np.array([0, 0] + [-SCREEN_WIDTH, -SCREEN_HEIGHT] + [0]*12),
+        #              np.array([SCREEN_WIDTH, SCREEN_HEIGHT]*2 + [np.sqrt(SCREEN_WIDTH**2 + SCREEN_HEIGHT**2)]*12),
+        #              (16,))
+        self.observation_space = gym.spaces.box.Box(  # x-y-vector-to-target, 12-distance-sensor-values
+            np.array([-SCREEN_WIDTH, -SCREEN_HEIGHT] + [0]*12),
+                     np.array([SCREEN_WIDTH, SCREEN_HEIGHT] + [np.sqrt(SCREEN_WIDTH**2 + SCREEN_HEIGHT**2)]*12),
+                     (14,))
+        # self.observation_space = gym.spaces.box.Box(  # dist-to-target, angle error, 12-distance-sensor-values
+        #     np.array([0, -np.pi/2] + [0]*12),
+        #              np.array([maxdist, np.pi/2] + [maxdist]*12),
+        #              (14,))
         self.action_space = gym.spaces.box.Box(np.array([-AGENT_MAX_SPEED, -AGENT_MAX_SPEED]), np.array([AGENT_MAX_SPEED, AGENT_MAX_SPEED]), (2,))
+        # self.action_space = gym.spaces.Discrete(3)  # 0: forward, 1: turn right pi/6, 2: turn left pi/6
 
         self.wind = None
+
+        self.traj_initialized = False
+
+    def init_traj(self):
+        if self.traj_initialized:
+            return
+        self.traj_initialized = True
+        self.traj = []
+        Path(self.traj_savepath).mkdir(parents=True, exist_ok=True)
+
+        run_number = 0
+        for p in Path(self.traj_savepath).iterdir():
+            if p.is_file() and p.stem.isnumeric():
+                if int(p.stem) > run_number:
+                    run_number = int(str(p.stem))
+        run_number += 1
+
+        robpos_savepath = self.traj_savepath + ('/' + str(run_number) + '_robpos.csv')
+        with open(robpos_savepath, 'w') as f:
+            for r in self.robots:
+                f.write('{} {} '.format(r.x, r.y))
+
+        self.traj_savepath += ('/' + str(run_number) + '.csv')
+
+    def save_traj(self, signal):
+        if not self.done:
+            self.traj.append([self.agent.x, self.agent.y, 0])
+        else:
+            if signal == Agent.TARGET_FOUND:
+                self.traj.append([self.agent.x, self.agent.y, 'target'])
+            elif signal == Agent.ROBOT_COLLISION:
+                self.traj.append([self.agent.x, self.agent.y, 'robot'])
+            elif signal == Agent.BOUNDARY_COLLISION:
+                self.traj.append([self.agent.x, self.agent.y, 'boundary'])
+            else:
+                self.traj.append([self.agent.x, self.agent.y, 'time'])
+
+            with open(self.traj_savepath, 'a') as f:
+                for t in self.traj:
+                    f.write('{} {} {}\n'.format(t[0], t[1], t[2]))
+            self.traj = []
 
     def setup(self):
         """ Set up the game and initialize the variables. """
@@ -560,6 +813,8 @@ class App(gym.Env):
                 nx = rx * (SCREEN_WIDTH - 150) + 75
                 ny = ry * (SCREEN_HEIGHT - 150) + 75
 
+            # nx, ny = SCREEN_WIDTH/2, SCREEN_HEIGHT/2
+
             # ti_start = self.rng.integers(0, N_BINS-1)
             # ti_end = self.rng.integers(0, N_BINS - 1)
             ti_start = robot_rng.integers(0, N_BINS)
@@ -586,7 +841,7 @@ class App(gym.Env):
                 ny = ry * (SCREEN_HEIGHT - 150) + 75
 
         if TARGET_INDEX is None:
-            ti_start = self.rng.integers(0, N_BINS )
+            ti_start = self.rng.integers(0, N_BINS)
             package = self.rng.random() < 0.5
         else:
             ti_start = TARGET_INDEX % N_BINS
@@ -597,12 +852,15 @@ class App(gym.Env):
         else:
             targets = self.start_targets
 
-        self.agent = Agent(nx, ny, targets[ti_start])
+        self.agent = Agent(nx, ny, targets[ti_start], self.robots)
         self.agent.target.active = True
         self.agent.has_package = package
 
         if self.wind is None and self.always_render:
             self.wind = Wind(self, self.always_render)
+
+        if self.traj_savepath is not None:
+            self.init_traj()
         
 
     def step(self, action):
@@ -616,9 +874,9 @@ class App(gym.Env):
             for r in self.robots:
                 r.step(dt, self.robots)
                 if r.drop_target is None:
-                    r.drop_target = self.end_targets[self.rng.integers(0, N_BINS )]
+                    r.drop_target = self.end_targets[self.rng.integers(0, N_BINS)]
                 if r.pick_target is None:
-                    r.pick_target = self.start_targets[self.rng.integers(0, N_BINS )]
+                    r.pick_target = self.start_targets[self.rng.integers(0, N_BINS)]
         self.step_time = timeit.default_timer()
         signal, reward = self.agent.step(action, self.robots)
         if signal == Agent.TARGET_FOUND:
@@ -631,7 +889,7 @@ class App(gym.Env):
             self.done = True
         if self.agent.target is None:
             if TARGET_INDEX is None:
-                ti = self.rng.integers(0, N_BINS )
+                ti = self.rng.integers(0, N_BINS)
             else:
                 ti = TARGET_INDEX % N_BINS
             self.agent.target = self.end_targets[ti] if self.agent.has_package else self.start_targets[ti]
@@ -655,12 +913,23 @@ class App(gym.Env):
                 print("Cumulative Reward for this episode: {}".format(self.cum_reward))
             self.cum_reward = 0
 
+        if self.traj_savepath is not None:
+            self.save_traj(signal)
+
         # return observation, reward, done, info
         rob_pos = [[r.x - self.agent.x, r.y - self.agent.y] for r in self.robots]
         if ONLY_NEAREST_ROBOT:
             rob_distance = [np.sqrt(r[0]**2 + r[1] ** 2) for r in rob_pos]
             rob_pos = [rob_pos[np.argmin(rob_distance)]]
-        return np.array([self.agent.x, self.agent.y] + [self.agent.target.x - self.agent.x, self.agent.target.y - self.agent.y] + [coord for coord_list in rob_pos for coord in coord_list]), reward, self.done, dict()
+        # return np.concatenate(([self.agent.x, self.agent.y],
+        #     [self.agent.target.x - self.agent.x, self.agent.target.y - self.agent.y],
+        #     [coord for coord_list in rob_pos for coord in coord_list])), reward, self.done, dict()
+        # rob_pos = []
+        return np.array( # [self.agent.x, self.agent.y] +
+                        [self.agent.target.x - self.agent.x, self.agent.target.y - self.agent.y] +
+                        self.agent.sensor_values), reward, self.done, dict()
+        # return np.array([self.agent.dist_to_target, self.agent.angle_error] +
+        #                         self.agent.sensor_values), reward, self.done, dict()
 
     def reset(self):
         if self.wind is not None and not self.always_render:
@@ -670,7 +939,15 @@ class App(gym.Env):
         if ONLY_NEAREST_ROBOT:
             rob_distance = [np.sqrt(r[0]**2 + r[1] ** 2) for r in rob_pos]
             rob_pos = [rob_pos[np.argmin(rob_distance)]]
-        return np.array([self.agent.x, self.agent.y] + [self.agent.target.x - self.agent.x, self.agent.target.y - self.agent.y] + [coord for coord_list in rob_pos for coord in coord_list])
+        # return np.concatenate(([self.agent.x, self.agent.y],
+        #                        [self.agent.target.x - self.agent.x, self.agent.target.y - self.agent.y],
+        #                        [coord for coord_list in rob_pos for coord in coord_list]))
+        # rob_pos = []
+        return np.array(# [self.agent.x, self.agent.y] +
+                        [self.agent.target.x - self.agent.x, self.agent.target.y - self.agent.y] +
+                        self.agent.sensor_values)
+        # return np.array([self.agent.dist_to_target, self.agent.angle_error] +
+        #                         self.agent.sensor_values)
 
     def render(self, mode='human'):
         if self.wind is None:
@@ -683,11 +960,18 @@ class App(gym.Env):
 
 
 def main():
-    app = App()
+    app = App(always_render=True)
     app.setup()
     app.render()
-    while app.wind is None or not app.wind.closed:
-        app.step([0, 1])
+    app.agent.x, app.agent.y = 400, 400
+    # while app.wind is None or not app.wind.closed:
+    for i in range(100):
+        app.step(np.array([0,0]))
+        print(i)
+        print(app.agent.sensor_values)
+        # print(app.agent.angle)
+        print('')
+        time.sleep(2)
     # arcade.run()
 
 

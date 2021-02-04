@@ -6,18 +6,19 @@ import torch
 from pathlib import Path
 import pickle
 import shutil
+import profile
 
-import pycking_env3
+import gauss_env
 # from pyforce import agents
 
-# LOAD_AGENT_FROM = None
-LOAD_AGENT_FROM = './evals/ppo_pycking/10/agent'
+LOAD_AGENT_FROM = None
+# LOAD_AGENT_FROM = './evals/ppo_sandbox/18/agent'
 
 agent_params = {
-    'save_path': "./evals/ppo_pycking",
-    'value_lr': 5e-4,
-    'policy_lr': 5e-4,
-    'episodes': 20000,
+    'save_path': "./evals/ppo_gauss",
+    'value_lr': 5e-5,   # original 5e-4
+    'policy_lr': 5e-5,  # original 5e-4
+    'episodes': 50000,
     'train_freq': 2048,
     'eval_freq': 50,
     'render': False,
@@ -41,7 +42,7 @@ agent_params['save_path'] += ('/' + str(run_number))
 
 Path(agent_params['save_path']).mkdir(exist_ok=True)
 
-parm_list = [agent_params, pycking_env3.env_params]
+parm_list = [agent_params, gauss_env.env_params]
 file_path = agent_params['save_path'] + '/params'
 with open(file_path, 'wb') as f:
     pickle.dump(parm_list, f)
@@ -51,14 +52,14 @@ with open(file_path_txt, 'w') as f:
     for k in agent_params.keys():
         f.write('\t' + k + ' = ' + str(agent_params[k]) + '\n')
     f.write('env_params\n')
-    for k in pycking_env3.env_params.keys():
-        f.write('\t' + k + ' = ' + str(pycking_env3.env_params[k]) + '\n')
+    for k in gauss_env.env_params.keys():
+        f.write('\t' + k + ' = ' + str(gauss_env.env_params[k]) + '\n')
 
 # device="cuda:0" if torch.cuda.is_available() else "cpu"
 # # torch.cuda.set_device(0)
 device = "cpu"
 
-env=wrap_openai_gym(pycking_env3.App(always_render=False, verbose=False))
+env=wrap_openai_gym(gauss_env.App(always_render=False, verbose=False))
 
 observation_processor,hidden_layers,action_mapper=default_network_components(env)
 
@@ -83,6 +84,9 @@ if LOAD_AGENT_FROM is not None:
 
 agent.train(env,episodes=agent_params['episodes'],train_freq=agent_params['train_freq'],eval_freq=agent_params['eval_freq'],render=agent_params['render'], batch_size=agent_params['batch_size'],
             gamma=agent_params['gamma'],tau=agent_params['tau'],clip=agent_params['clip'],n_steps=agent_params['n_steps'],entropy_coef=agent_params['entropy_coef'])
+
+# command = "agent.train(env,episodes=agent_params['episodes'],train_freq=agent_params['train_freq'],eval_freq=agent_params['eval_freq'],render=agent_params['render'], batch_size=agent_params['batch_size'], gamma=agent_params['gamma'],tau=agent_params['tau'],clip=agent_params['clip'],n_steps=agent_params['n_steps'],entropy_coef=agent_params['entropy_coef'])"
+# profile.run(command, filename='gauss_stat.p')
 
 # pycking_env3.IGNORE_ROBOTS = False
 #

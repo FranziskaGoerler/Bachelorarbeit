@@ -6,10 +6,10 @@ import torch
 from pathlib import Path
 import pickle
 
-import pycking_env3
+import gauss_env as gauss_env
 # from pyforce import agents
 
-LOAD_PATH = './evals/ppo_pycking/4/'
+LOAD_PATH = './evals/ppo_gauss/4/'
 
 file_path = LOAD_PATH + '/params'
 with open(file_path, 'rb') as f:
@@ -18,13 +18,13 @@ with open(file_path, 'rb') as f:
 agent_params = parm_list[0]
 env_parms = parm_list[1]
 
-pycking_env3.N_BOTS = env_parms['N_BOTS']
+gauss_env.N_BOTS = env_parms['N_BOTS']
 
 # device="cuda:0" if torch.cuda.is_available() else "cpu"
 # # torch.cuda.set_device(0)
 device = "cpu"
 
-env=wrap_openai_gym(pycking_env3.App(always_render=True, verbose=False))
+env=wrap_openai_gym(gauss_env.App(always_render=True, plot_reward=False, verbose=False))
 
 observation_processor,hidden_layers,action_mapper=default_network_components(env)
 
@@ -38,6 +38,7 @@ agent=PPOAgent(
 ).to(device)
 
 file_path = LOAD_PATH + '/agent'
+# file_path = LOAD_PATH + '/agent4903861.0'
 with open(file_path, 'rb') as f:
     state_dict = pickle.load(f)
 agent.load_state_dict(state_dict)

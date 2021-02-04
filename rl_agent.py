@@ -4,18 +4,18 @@ from pyforce.agents import TD3Agent
 # import gym
 import torch
 
-import pycking_env3
+import sandbox_env
 # from pyforce import agents
 
 # device="cuda:0" if torch.cuda.is_available() else "cpu"
 # # torch.cuda.set_device(0)
 device= "cpu"
 # print(device)
-env=wrap_openai_gym(pycking_env3.App(always_render=True))
+env=wrap_openai_gym(sandbox_env.App(always_render=True, verbose=False))
 
 agent=TD3Agent(
     env,
-    save_path="./evals/traj_test2",
+    save_path="./evals/td3_new",
     critic_lr=1e-3,
     actor_lr=1e-3
 ).to(device)
