@@ -25,6 +25,7 @@ PLAN_STEPS = 20         # default 45
 CHECK_MAX_STEPS = 5    # default 15
 RADIUS = 100
 MIN_DIST = 15
+
 SCREEN_TITLE = "pycking environment"
 
 ROBOT_MAX_SPEED = 0    # if exactly 0, step function of robot is never called, which speeds up environment
@@ -35,14 +36,15 @@ REWARD_TARGET_FOUND = 5000    # reward for reaching target
 REWARD_COLLISION = -5000
 REWARD_BOUNDARY = -5000
 DONE_AT_COLLISION = True
-ONLY_NEAREST_ROBOT = False
+ONLY_NEAREST_ROBOT = True
 IGNORE_ROBOTS = False
 AGENT_MAX_STEPS = 350    # max length of an episode
 TARGET_INDEX = None      # Index of target for agent. None for random target each episode.
 CENTER_START = False   # Whether to always put agent in the screen center (True) or initialize randomly (False)
 
 # DESCRIPTION = ''
-DESCRIPTION = 'just another test with td3, now using preliminary env again, batch size 500 (was 800)'
+DESCRIPTION = 'comparison of action spaces: 1) polar coordinates, 2) cartesian coordinates, 3) cartesian coordinates (scaled).' \
+              'reward dependent of distance decrease to target.'
 
 param_names = ['ACTION_SPACE_TYPE', 'OBSERVATION_SPACE_TYPE', 'REWARD_FUNCTION',
                'SCREEN_WIDTH', 'SCREEN_HEIGHT', 'N_BINS', 'N_BOTS', 'BOT_RADIUS',
@@ -700,10 +702,13 @@ class App(gym.Env):
 
         self.wind = None
 
-        if self.traj_savepath is not None:
-            self.init_traj()
+        self.traj_initialized = False
 
     def init_traj(self):
+        if self.traj_initialized:
+            return
+        self.traj_initialized = True
+
         self.traj = []
         Path(self.traj_savepath).mkdir(parents=True, exist_ok=True)
 
@@ -764,37 +769,48 @@ class App(gym.Env):
 
             return False
 
+        space = (SCREEN_HEIGHT - 100) / (N_BINS - 1)
+        space5 = (SCREEN_HEIGHT - 100) / 4
+
+        for i in range(N_BINS):
+            self.start_targets.append(Target(50, 50 + i * space))
+            self.end_targets.append(Target(SCREEN_WIDTH - 50, 50 + i * space))
+            # self.start_targets.append(Target(50 + i * space, 50))
+            # self.end_targets.append(Target(50 + i * space, SCREEN_HEIGHT - 50))
+
+        # self.start_targets.append(Target(50+space, 50))
+        # self.end_targets.append(Target(50 + 2*space, 50))
+        #
+        # self.start_targets.append(Target(50+space, SCREEN_HEIGHT - 50))
+        # self.end_targets.append(Target(50 + 2*space, SCREEN_HEIGHT - 50))
+        #
+        # self.start_targets.append(Target(400, 50 + space5))
+        # self.end_targets.append(Target(400, 50 + 3*space5))
+        #
+        # self.start_targets.append(Target(50+space, 2*space5))
+        # self.end_targets.append(Target(50 + 2*space, 2*space5))
+
         if TARGET_IN_CENTER:
-            ta = Target(SCREEN_WIDTH/2, SCREEN_HEIGHT/2)
-            self.start_targets.append(ta)
-            self.end_targets.append(ta)
-
-        else:
-            space = (SCREEN_HEIGHT - 100) / (N_BINS - 1)
-
-            for i in range(N_BINS):
-                self.start_targets.append(Target(50, 50 + i * space))
-                self.end_targets.append(Target(SCREEN_WIDTH - 50, 50 + i * space))
-                # self.start_targets.append(Target(50 + i * space, 50))
-                # self.end_targets.append(Target(50 + i * space, SCREEN_HEIGHT - 50))
-
-        if TARGET_IN_CENTER:
-            robot_margin = BOT_RADIUS*2
+            robot_margin = BOT_RADIUS * 2
         else:
             robot_margin = 75
+
         for i in range(N_BOTS):
             # rx = self.rng.random()
             # ry = self.rng.random()
             rx = robot_rng.random()
             ry = robot_rng.random()
+
             nx = rx * (SCREEN_WIDTH - robot_margin*2) + robot_margin
             ny = ry * (SCREEN_HEIGHT - robot_margin*2) + robot_margin
+
 
             while near_robot(nx, ny, self.robots):
                 # rx = self.rng.random()
                 # ry = self.rng.random()
                 rx = robot_rng.random()
                 ry = robot_rng.random()
+
                 nx = rx * (SCREEN_WIDTH - robot_margin*2) + robot_margin
                 ny = ry * (SCREEN_HEIGHT - robot_margin*2) + robot_margin
 
@@ -803,7 +819,8 @@ class App(gym.Env):
             # ti_start = self.rng.integers(0, N_BINS-1)
             # ti_end = self.rng.integers(0, N_BINS - 1)
             ti_start = robot_rng.integers(0, N_BINS)
-            ti_end = robot_rng.integers(0, N_BINS )
+            ti_end = robot_rng.integers(0, N_BINS)
+
 
             self.robots.append(Robot(nx, ny, self.start_targets[ti_start], self.end_targets[ti_end]))
 
@@ -847,7 +864,9 @@ class App(gym.Env):
 
         if self.wind is None and self.always_render:
             self.wind = Wind(self, self.always_render)
-        
+
+        if self.traj_savepath is not None:
+            self.init_traj()
 
     def step(self, action):
         self.step_count += 1

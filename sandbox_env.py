@@ -11,7 +11,7 @@ from pathlib import Path
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 800
 N_BINS = 4
-N_BOTS = 6
+N_BOTS = 8
 BOT_RADIUS = 17.5
 COLLISION_DISTANCE = BOT_RADIUS + 17.5
 UNSAFE_DISTANCE = 5*BOT_RADIUS + 17.5
@@ -663,6 +663,7 @@ class Wind(arcade.Window):
         dt = start_time - self.step_time
         self.step_time = start_time
         dt_difference = 0.0155 - dt
+
         if dt_difference > 0:
             time.sleep(dt_difference)
 

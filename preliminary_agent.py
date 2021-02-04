@@ -9,13 +9,9 @@ import pickle
 import shutil
 import profile
 import itertools
-
-
-# 4 Roboter: Training von 0, -5000 Kollision   -> preliminary/algorithm_angle/ppo/4
-# 10 Roboter: Training von 0, -5000 Kollision  -> preliminary/algorithm_angle/ppo/5
-
 import preliminary_env
 # import minimal_preliminary
+
 # from pyforce import agents
 
 LOAD_AGENT_FROM = None
@@ -153,6 +149,4 @@ for ag in ['ppo']:
         #     with open(LOAD_AGENT_FROM, 'rb') as f:
         #         state_dict = pickle.load(f)
         #     agent.load_state_dict(state_dict)
-
-
 

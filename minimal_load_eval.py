@@ -12,7 +12,9 @@ PPO = False
 import minimal_preliminary as sandbox_env
 # from pyforce import agents
 
-LOAD_PATH = './evals/preliminary_minimal/algorithm/td3/4/'
+# LOAD_PATH = './evals/preliminary_minimal/algorithm/td3/4/'
+LOAD_PATH = './evals/preliminary_minimal/action_space2/cartesian/1/'
+# LOAD_PATH = './evals/preliminary_minimal/reward_function/distance-True/2/'
 
 file_path = LOAD_PATH + '/params'
 with open(file_path, 'rb') as f:
@@ -51,7 +53,7 @@ else:
     ).to(device)
 
 file_path = LOAD_PATH + '/agent'
-# file_path = LOAD_PATH + '/agent4903861.0'
+# file_path = LOAD_PATH + '/agent16913.0'
 with open(file_path, 'rb') as f:
     state_dict = pickle.load(f)
 agent.load_state_dict(state_dict)

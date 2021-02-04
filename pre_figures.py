@@ -4,17 +4,21 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 import pdb
 
 PPO = False
-RM = 5000    # running mean for TD3 training reward
-TD3_eval_scaling = 0.2          # 0.2 for comparison with PPO
+RM = 1000    # running mean for TD3 training reward
+TD3_eval_scaling = 1        # 0.2 for comparison with PPO
 
-# parent_folder = 'preliminary_minimal/action_space2'
-# parent_folder = 'preliminary_minimal/reward_function2'
-# parent_folder = 'preliminary/observation_space_angle'
-parent_folder = 'preliminary/algorithm_angle'
-# folder_names = ['polar', 'cartesian', 'scaled']
-folder_names = ['td3', 'ppo']
-# folder_names = ['coord+diff', 'coordinates', 'only diff']
-# folder_names = ['angle-False', 'angle-True', 'distance-False', 'distance-True']
+#parent_folder = 'preliminary_minimal/action_space'
+parent_folder = 'preliminary_minimal/reward_function2'
+#parent_folder = 'observation_space_angle'
+#parent_folder = 'reward_function'
+#parent_folder = 'algorithm'
+#folder_names = ['polar', 'cartesian', 'scaled']
+#folder_names = ['td3', 'ppo']
+#folder_names = ['coordinates', 'coord+diff', 'only diff']
+folder_names = ['distance-True', 'angle-True', 'distance-False', 'angle-False']
+COLORS = ['C3', 'C0','C1', 'C9']
+#COLORS = ['C0', 'C1', 'C2']
+
 
 def tensorboard_loaddata(dir, ppo=PPO):
     if ppo:
@@ -53,10 +57,7 @@ if __name__ == '__main__':
         x_train_all.append([])
         x_mean_all.append([])
 
-        for j in range(3):    # 0, 2, 4
-
-            if folder == 'td3':
-                j = 0
+        for j in range(10):
 
             dir = './evals/{}/{}/{}/'.format(parent_folder, folder, j + 1)
             try:
@@ -152,23 +153,38 @@ if __name__ == '__main__':
 
     # x_mean_all = x_mean[:min_length]
 
-
+    plt.figure(figsize=(10,4))
     plt.subplot(1, 2, 1)
+    colors_iter = iter(COLORS)
+    #styles = iter([':', '-', ':', '-'])
     for x_t, y_t in zip(x_train_avg, y_train_avg):
-        l, = plt.plot(x_t, y_t)
+        l, = plt.plot(x_t, y_t, color=next(colors_iter))
     plt.title('Belohnung: Training')
     plt.xlabel('Schritt')
     plt.ticklabel_format(axis='x', style='sci', scilimits=(0,3))
     plt.ylabel('Belohnung pro Schritt')
+    plt.ylim([-0.5, 15.5])
+    #plt.legend(folder_names)
     plt.subplot(1, 2, 2)
     lines = []
 
+    colors_iter = iter(COLORS)
     for x_m, y_m in zip(x_mean_avg, y_mean_avg):
-        l, = plt.plot(x_m, y_m)
+        l, = plt.plot(x_m, y_m, color=next(colors_iter))
         lines.append(l)
     plt.title('Belohnung: Evaluierung')
     plt.xlabel('Evaluierung Nr.')
     plt.ticklabel_format(axis='x', style='sci', scilimits=(0,3))
+    # plt.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
     plt.ylabel('Belohnung pro Episode')
-    plt.figlegend(lines, folder_names)
+    #plt.yticks([-4000, -2000, 0, 2500, 5000])
+    # plt.figlegend(lines, folder_names)
+    plt.ylim([-50, 1250])
+    plt.legend(folder_names)
+    plt.subplots_adjust(top=0.88,
+        bottom=0.165,
+        left=0.125,
+        right=0.915,
+        hspace=0.2,
+        wspace=0.355)
     plt.show()

@@ -49,18 +49,18 @@ class App(gym.Env):
             done = True
 
         # (1) Belohnung der Distanzverringerung zum Ziel
-        # elif delta_distance > 0:
-        # else: reward = (5 / np.sqrt(2)) * delta_distance
-        # else: reward = 0
+        elif delta_distance > 0:
+            reward = (5 / np.sqrt(2)) * delta_distance
+        else: reward = 0
 
         # (2) Belohnung abhängig von Verhältnis des gewählten Winkels zum perfekten Winkel
-        elif angle_error <= 0 and angle_error >= - np.pi / 2:
-            reward = (np.exp(angle_error + np.pi / 2) - 1) * reward_factor
-        elif angle_error > 0 and angle_error <= np.pi / 2:
-            reward = (np.exp(- angle_error + np.pi / 2) - 1) * reward_factor
-        else: # Bestrafung, bei Entfernung vom Ziel
-            neg_angle_error = np.pi - abs(angle_error)
-            reward = - (np.exp(- neg_angle_error + np.pi / 2) - 1) * reward_factor
+        # elif angle_error <= 0 and angle_error >= - np.pi / 2:
+        #     reward = (np.exp(angle_error + np.pi / 2) - 1) * reward_factor
+        # elif angle_error > 0 and angle_error <= np.pi / 2:
+        #     reward = (np.exp(- angle_error + np.pi / 2) - 1) * reward_factor
+        # else: # Bestrafung, bei Entfernung vom Ziel
+        #     neg_angle_error = np.pi - abs(angle_error)
+        #     reward = - (np.exp(- neg_angle_error + np.pi / 2) - 1) * reward_factor
 
         # (3) Nur Belohnung, wenn die Bewegungsrichtung geradlinig zum Ziel ist, mit einer Toleranz von 45 Grad
         # elif np.abs(angle_error) < (np.pi / 180):

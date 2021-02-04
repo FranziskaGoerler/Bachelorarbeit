@@ -10,16 +10,19 @@ N_BINS = 4
 BOT_RADIUS = 17.5
 # BOT_RADIUS = 7.5
 TARGET_WIDTH = 35
-# TARGET_WIDTH = 15
+# TARGET_WIDTH = 10
 TARGET_IN_CENTER = False
 # TARGET_IN_CENTER = True
 
 # LOAD_PATH = './evals/action_space/polar/3/'
-# LOAD_PATH = './evals/observation_space/only diff/3/'
+#LOAD_PATH = './evals/observation_space/only diff/3/'
+LOAD_PATH = './evals/final/21/'
 # LOAD_PATH = './evals/reward_function/angle-False/3/'
-LOAD_PATH = './evals/preliminary/algortihm/td3/1/'
+# LOAD_PATH = './evals/preliminary/algortihm/td3/1/'
+#LOAD_PATH = './evals/preliminary_minimal/action_space2/cartesian/1/'
+# LOAD_PATH = './evals/preliminary_minimal/reward_function/distance-True/2/'
 
-load_number = 1
+load_number = 4
 
 traj_file = LOAD_PATH + str(load_number) + '.csv'
 robots_file = LOAD_PATH + str(load_number) + '_robpos.csv'
@@ -41,6 +44,16 @@ for t in traj:
         x_pos.append([])
         y_pos.append([])
 
+selected_ind = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 14, 16]
+ausweich_ind = [7, 13, 26, 32, 33, 37]
+
+x_selected =  [x_pos[i] for i in selected_ind]
+y_selected =  [y_pos[i] for i in selected_ind]
+end_selected =  [endstate[i] for i in selected_ind]
+x_ausweich =  [x_pos[i] for i in ausweich_ind]
+y_ausweich =  [y_pos[i] for i in ausweich_ind]
+end_ausweich =  [endstate[i] for i in ausweich_ind]
+
 robs = True
 try:
     with open(robots_file, 'r') as f:
@@ -51,7 +64,7 @@ except:
 robots = []
 if robs:
     for i in range(len(robpos)//2):
-        robots.append([robpos[2*i],robpos[2*i+1]])
+        robots.append([float(robpos[2*i]),float(robpos[2*i+1])])
 
 plt.figure(figsize=(8,8))
 plt.tight_layout()
@@ -87,7 +100,8 @@ for r in robots:
     patches.append(Circle((r[0], r[1]), BOT_RADIUS, color='k'))
     ax.add_patch(patches[-1])
 
-for x, y, state in zip(x_pos, y_pos, endstate):
+#for x, y, state in zip(x_pos, y_pos, endstate):
+for x, y, state in zip(x_selected, y_selected, end_selected):
     c = 'k'
     if state == 'robot' or state == 'boundary':
         c = 'r'
@@ -96,9 +110,17 @@ for x, y, state in zip(x_pos, y_pos, endstate):
     elif state == 'time':
         c = 'b'
 
-    ax.plot(x, y, color=c)
-    ax.plot(x[0], y[0], marker='o', color =c, markersize=8, fillstyle='none', clip_on=False)
-    ax.plot(x[-1], y[-1], marker='o', color =c, markersize=8, fillstyle='full', clip_on=False)
+    ax.plot(x, y, color=c, lw=1)
+    ax.plot(x[0], y[0], marker='o', color =c, markersize=4, fillstyle='none', clip_on=False, markeredgewidth=1)
+    ax.plot(x[-1], y[-1], marker='o', color =c, markersize=4, fillstyle='full', clip_on=False)
+
+for x, y, state in zip(x_ausweich, y_ausweich, end_ausweich):
+    c = 'b'
+
+
+    ax.plot(x, y, color=c, lw=2)
+    ax.plot(x[0], y[0], marker='o', color =c, markersize=4, fillstyle='none', clip_on=False, markeredgewidth=1)
+    ax.plot(x[-1], y[-1], marker='o', color =c, markersize=4, fillstyle='full', clip_on=False)
 
 
 # pc = PatchCollection(patches)

@@ -11,7 +11,7 @@ class App(gym.Env):
         # self.position = np.array([0., 0.])
         self.start_position = np.array(self.position)
         self.action_space = gym.spaces.box.Box(np.array([-3, -3]), np.array([3, 3]), (2,))
-        self.observation_space = gym.spaces.box.Box(np.array([0, 0, -800, -800]), np.array([800, 800, 800, 800]),(4,)) # Ziel und Distanzvektor
+        self.observation_space = gym.spaces.box.Box(np.array([0, 0, -800, -800]), np.array([800, 800, 800, 800]),(4,)) # Eigene Position und Distanzvektor
         self.step_counter = 0
         self.cum_reward = 0
         self.start_targets = []
@@ -61,15 +61,15 @@ class App(gym.Env):
             done = True
 
         # (1) Belohnung der Distanzverringerung zum Ziel
-        # elif delta_distance > 0:
-        # else: reward = (5 / np.sqrt(2)) * delta_distance
-        # else: reward = 0
+        elif delta_distance > 0:
+            reward = (5 / np.sqrt(2)) * delta_distance
+        #else: reward = 0
 
         # (2) Belohnung abhängig vom Verhältnis des gewählten Winkels zum perfekten Winkel
-        elif angle_error <= 0 and angle_error >= - np.pi / 2:
-            reward = (np.exp(angle_error + np.pi / 2) - 1) * reward_factor
-        elif angle_error > 0 and angle_error <= np.pi / 2:
-            reward = (np.exp(- angle_error + np.pi / 2) - 1) * reward_factor
+        # elif angle_error <= 0 and angle_error >= - np.pi / 2:
+        #     reward = (np.exp(angle_error + np.pi / 2) - 1) * reward_factor
+        # elif angle_error > 0 and angle_error <= np.pi / 2:
+        #     reward = (np.exp(- angle_error + np.pi / 2) - 1) * reward_factor
         # else: # Bestrafung, bei Entfernung vom Ziel
         #     neg_angle_error = np.pi - abs(angle_error)
         #     reward = - (np.exp(- neg_angle_error + np.pi / 2) - 1) * reward_factor
@@ -84,7 +84,7 @@ class App(gym.Env):
             movement_vector = self.position - self.start_position
             angle = np.arctan2(movement_vector[1], movement_vector[0]) / np.pi * 180
 
-            print('Die Episode ist beendet. Kummulierte Belohnung: {}, Anzahl Schritte: {}, Bewegungsrichtung: {}, Endposition: ({}, {}), Zielposition: ({}, {}) '
+            print('Die Episode ist beendet. Kumulierte Belohnung: {}, Anzahl Schritte: {}, Bewegungsrichtung: {}, Endposition: ({}, {}), Zielposition: ({}, {}) '
                   .format(self.cum_reward, self.step_counter, angle, self.position[0], self.position[1], self.destination[0], self.destination[1]))
 
         return ([self.position[0], self.position[1], vector_to_target[0], vector_to_target[1]], reward, done, dict())
